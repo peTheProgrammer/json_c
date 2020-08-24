@@ -41,9 +41,10 @@ void *json_parse(char *data);
 char *json_stringify(void *obj);
 
 const uint64_t *json_get_value(const uint64_t *var, const char *name);
+uint64_t json_get_size(const uint64_t *var, const char *name);
 //////////////////////////////////
 
-//#ifdef JSON_IMPLEMENTATION
+#ifdef JSON_IMPLEMENTATION
 
 #if JSON_PRINTING
 #define JSON_PRINT(...) \
@@ -567,4 +568,4 @@ void _json_parse_variable(JSON_Parsing_Data *parse, uint16_t depth, uint64_t *va
 #undef _JSON_PARSE_DEPTH_PRINT
 }
 
-//#endif
+#endif
