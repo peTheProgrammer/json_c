@@ -1,16 +1,4 @@
-/*
-	This is written in one file so that it can be ported easily to another project.
-	To do so put the file in the other project and before including it define JSON_IMPLEMENTATION
-	for the implementation to be compiled.
-	Do not define JSON_IMPLEMENTATION in multiple files because the functions will be defined multiple times
-	which will lead to linker errors.
-	The best way to do it is to create a .c file in which the only thing you do is define JSON_IMPLEMENTATION and then include this file.
-	Or copy paste the following two lines : 
-#define JSON_IMPLEMENTATION
-#include "json.h"
-*/
-
-// enable only in debug
+// enable printing only in debug
 // printing slows down the functions by about 10x
 // 1 -> enabled
 // 0 -> disabled
@@ -29,19 +17,50 @@
 #define JSON_TYPE_ARRAY 5
 #define JSON_TYPE_OBJECT 6
 
+typedef uint64_t JSON_Variable;
 typedef int64_t JSON_Integer;
 typedef double JSON_Float;
 typedef char *JSON_String;
 typedef uint64_t JSON_Boolean;
-typedef void *JSON_Array;
-typedef void *JSON_Object;
+typedef JSON_Variable *JSON_Array;
+typedef JSON_Variable *JSON_Object;
+
+/* STRUCT 
+
+*/
+typedef struct 
+{
+	uint64_t readOnly;
+	JSON_Variable *data;
+	JSON_String strings;
+} JSON_Root;
 
 // external functions
-void *json_parse(char *data);
-char *json_stringify(void *obj);
 
-const uint64_t *json_get_value(const uint64_t *var, const char *name);
+/* FUNC
+	This function takes in a buffer of characters of json format to parse to a tree like structure that the computer can access more easily.
+*/
+JSON_Root json_parse(const char *data);
+
+/* FUNC
+	This function takes in a 
+*/
+const char *json_stringify(JSON_Root root);
+
+/* FUNC */
+const uint64_t *json_get_value_pointer(const uint64_t *var, const char *name);
+/* FUNC */
+JSON_Integer json_get_value_int(const uint64_t *var, const char *name);
+JSON_Float json_get_value_float(const uint64_t *var, const char *name);
+JSON_String json_get_value_string(const uint64_t *var, const char *name);
+JSON_Boolean json_get_value_boolean(const uint64_t *var, const char *name);
+JSON_Array json_get_value_array(const uint64_t *var, const char *name);
+JSON_Object json_get_value_object(const uint64_t *var, const char *name);
+/* FUNC */
 uint64_t json_get_size(const uint64_t *var, const char *name);
+/* FUNC */
+
+
 //////////////////////////////////
 
 #ifdef JSON_IMPLEMENTATION
@@ -94,7 +113,7 @@ uint64_t _json_name_to_index(const char *name)
 	return index;
 }
 
-const uint64_t *json_get_value(const uint64_t *var, const char *name)
+const uint64_t *json_get_value_pointer(const uint64_t *var, const char *name)
 {
 
 	uint64_t type = var[0];
@@ -119,7 +138,7 @@ const uint64_t *json_get_value(const uint64_t *var, const char *name)
 			JSON_PRINT("name = %s\n", _name);
 			uint64_t _type = data[i * 3 + 1];
 			if (_json_name_compare(_name, name))
-				return json_get_value(data + i * 3 + 1, name + _json_name_length(name) + 1);
+				return json_get_value_pointer(data + i * 3 + 1, name + _json_name_length(name) + 1);
 		}
 		JSON_PRINT_ERROR("JSON::Object Name '%s' not found.\n", name);
 		break;
@@ -133,7 +152,7 @@ const uint64_t *json_get_value(const uint64_t *var, const char *name)
 		if (index < 0 || index >= count)
 			JSON_PRINT_ERROR("JSON::Array Out of bounds.\nindex : %ld, count : %ld\n", index, count);
 		else
-			return json_get_value(data + index * 2, name + _json_name_length(name) + 1);
+			return json_get_value_pointer(data + index * 2, name + _json_name_length(name) + 1);
 
 		break;
 	}
@@ -193,14 +212,39 @@ uint64_t json_get_size(const uint64_t *var, const char *name)
 	return 0;
 }
 
+JSON_Integer json_get_value_int(const uint64_t *var, const char *name)
+{
+	return *((JSON_Integer*) json_get_value_pointer(var, name));
+}
+JSON_Float json_get_value_float(const uint64_t *var, const char *name)
+{
+	return *((JSON_Float*) json_get_value_pointer(var, name));
+}
+JSON_String json_get_value_string(const uint64_t *var, const char *name)
+{
+	return *((JSON_String*) json_get_value_pointer(var, name));
+}
+JSON_Boolean json_get_value_boolean(const uint64_t *var, const char *name)
+{
+	return *((JSON_Boolean*) json_get_value_pointer(var, name));
+}
+JSON_Array json_get_value_array(const uint64_t *var, const char *name)
+{
+	return *((JSON_Array*) json_get_value_pointer(var, name));
+}
+JSON_Object json_get_value_object(const uint64_t *var, const char *name)
+{
+	return *((JSON_Object*) json_get_value_pointer(var, name));
+}
+
 // parsing
 
 typedef struct
 {
 	uint16_t line_count;
 	uint16_t terminate;
-	char *cdata;
-	char *end_of_data;
+	const char *cdata;
+	const char *end_of_data;
 	char *strings;
 	uint64_t *objects;
 	uint32_t object_length;
@@ -307,7 +351,7 @@ void _json_parse_calculate_sizes(JSON_Parsing_Data *parse, uint16_t depth)
 	(parse->tos)--;
 }
 
-void *json_parse(char *data)
+JSON_Root json_parse(const char *data)
 {
 
 	JSON_Parsing_Data parse =
@@ -321,8 +365,8 @@ void *json_parse(char *data)
 			.object_length = 0,
 			.array_length = 0,
 			.string_length = 0,
-			.stack = malloc(200),
-			.counts = malloc(200),
+			.stack = malloc(256),
+			.counts = malloc(256),
 			.tos = -1,
 			.count_index = 0};
 
@@ -356,11 +400,11 @@ void *json_parse(char *data)
 	free(parse.stack);
 	free(parse.counts);
 
-	// return
-	return objects;
+	JSON_Root root = { 1, objects, parse.strings };
+	return root;
 }
 
-uint32_t _json_parse_strcmp(char *s1, char *s2)
+uint32_t _json_parse_strcmp(const char *s1, const char *s2)
 {
 	uint32_t len = strlen(s2);
 	for (uint32_t i = 0; i < len; i++)
@@ -391,14 +435,13 @@ void _json_parse_variable(JSON_Parsing_Data *parse, uint16_t depth, uint64_t *va
 
 		// start counter
 		for(uint64_t i = 0; i < count; i++)
-		//while (*parse->cdata != '}' && parse->cdata <= parse->end_of_data)
 		{
 			_JSON_PARSE_NEXT_CHAR();
 			_JSON_PARSE_SKIP_WHITESPACE();
 			if (*parse->cdata == '}')
 				break;
 			_JSON_PARSE_NEXT_CHAR();
-			char *name = _JSON_PARSE_STRING();
+			const char *name = _JSON_PARSE_STRING();
 			uint64_t name_length = (uint64_t)(parse->cdata - name);
 			_JSON_PARSE_DEPTH_PRINT("name_length : %lu\n", name_length);
 			memcpy(parse->strings, name, name_length);
@@ -443,7 +486,6 @@ void _json_parse_variable(JSON_Parsing_Data *parse, uint16_t depth, uint64_t *va
 		vars[-1] = count;
 
 		for(uint64_t i = 0; i < count; i++)
-		//while (*parse->cdata != ']' && parse->cdata <= parse->end_of_data)
 		{
 			_JSON_PARSE_NEXT_CHAR(); // skip [ or ,
 			_JSON_PARSE_SKIP_WHITESPACE();
@@ -466,7 +508,7 @@ void _json_parse_variable(JSON_Parsing_Data *parse, uint16_t depth, uint64_t *va
 	{
 		var[0] = JSON_TYPE_BOOLEAN;
 
-		char *start = parse->cdata;
+		const char *start = parse->cdata;
 		if (_json_parse_strcmp(start, "true"))
 		{
 			var[1] = 1;
@@ -545,7 +587,7 @@ void _json_parse_variable(JSON_Parsing_Data *parse, uint16_t depth, uint64_t *va
 		char **value = (char **)(var + 1);
 
 		_JSON_PARSE_NEXT_CHAR();
-		char *string = _JSON_PARSE_STRING();
+		const char *string = _JSON_PARSE_STRING();
 		uint64_t name_length = (uint64_t)(parse->cdata - string);
 		memcpy(parse->strings, string, name_length);
 		*value = parse->strings;
